@@ -1,6 +1,7 @@
 import os
-from github import Github
+from github import Github, GithubException
 from dotenv import load_dotenv
+import sys
 
 class GitHubMCP:
     def __init__(self):
@@ -15,9 +16,17 @@ class GitHubMCP:
         if not self.token:
             raise ValueError("Token de GitHub no encontrado. Por favor, configura GITHUB_TOKEN en el archivo .env")
         
-        # Inicializar cliente de GitHub
-        self.github = Github(self.token)
-        self.user = self.github.get_user()
+        try:
+            # Inicializar cliente de GitHub
+            self.github = Github(self.token)
+            # Verificar la autenticación
+            self.user = self.github.get_user()
+            # Intentar acceder al nombre del usuario para verificar el token
+            self.user.login
+        except GithubException as e:
+            raise ValueError(f"Error de autenticación con GitHub: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"Error al inicializar el cliente de GitHub: {str(e)}")
         
     def list_repositories(self):
         """
@@ -150,6 +159,78 @@ class GitHubMCP:
                 "message": f"Error al buscar código: {str(e)}"
             }
 
+    def create_repository(self, name, description=None, private=False, auto_init=True):
+        """
+        Crea un nuevo repositorio en GitHub
+        
+        Args:
+            name (str): Nombre del repositorio
+            description (str, optional): Descripción del repositorio
+            private (bool, optional): Si el repositorio debe ser privado
+            auto_init (bool, optional): Si se debe inicializar con README
+        """
+        try:
+            repo = self.user.create_repo(
+                name=name,
+                description=description,
+                private=private,
+                auto_init=auto_init
+            )
+            
+            return {
+                "status": "success",
+                "message": f"Repositorio '{name}' creado exitosamente",
+                "repo_url": repo.html_url
+            }
+            
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Error al crear el repositorio: {str(e)}"
+            }
+
+    def create_repository_direct(self, name, description=None, private=False, auto_init=True):
+        """
+        Crea un repositorio directamente sin interacción del usuario
+        """
+        try:
+            print(f"Intentando crear repositorio '{name}'...")
+            print(f"Usuario autenticado: {self.user.login}")
+            
+            # Crear el repositorio usando el método alternativo
+            data = {
+                "name": name,
+                "description": description if description else "",
+                "private": private,
+                "auto_init": auto_init
+            }
+            
+            repo = self.github.get_user().create_repo(**data)
+            
+            print(f"Repositorio '{name}' creado exitosamente")
+            print(f"URL: {repo.html_url}")
+            return True
+        except GithubException as e:
+            print(f"Error de GitHub al crear el repositorio: {e.data.get('message', str(e))}")
+            return False
+        except Exception as e:
+            print(f"Error inesperado al crear el repositorio: {str(e)}")
+            print(f"Tipo de error: {type(e)}")
+            return False
+
+# Si se proporcionan argumentos, crear el repositorio directamente
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "create_repo":
+        if len(sys.argv) > 2:
+            try:
+                github = GitHubMCP()
+                github.create_repository_direct(sys.argv[2])
+            except Exception as e:
+                print(f"Error: {str(e)}")
+            sys.exit(0)
+    else:
+        main()
+
 def print_menu():
     """
     Muestra el menú principal
@@ -159,7 +240,8 @@ def print_menu():
     print("2. Crear una nueva rama")
     print("3. Crear un Pull Request")
     print("4. Buscar código")
-    print("5. Salir")
+    print("5. Crear nuevo repositorio")
+    print("6. Salir")
     print("================")
 
 def main():
@@ -172,7 +254,7 @@ def main():
         
         while True:
             print_menu()
-            opcion = input("\nSelecciona una opción (1-5): ")
+            opcion = input("\nSelecciona una opción (1-6): ")
             
             if opcion == "1":
                 print("\nListando tus repositorios...")
@@ -214,11 +296,27 @@ def main():
                     print(f"Error: {result['message']}")
             
             elif opcion == "5":
+                name = input("Ingresa el nombre del nuevo repositorio: ")
+                description = input("Ingresa la descripción (opcional, presiona Enter para omitir): ")
+                private = input("¿Repositorio privado? (s/n): ").lower() == 's'
+                auto_init = input("¿Inicializar con README? (s/n): ").lower() == 's'
+                
+                result = github.create_repository(
+                    name=name,
+                    description=description if description else None,
+                    private=private,
+                    auto_init=auto_init
+                )
+                print(f"Resultado: {result['message']}")
+                if result["status"] == "success":
+                    print(f"URL del repositorio: {result['repo_url']}")
+            
+            elif opcion == "6":
                 print("\n¡Hasta luego!")
                 break
             
             else:
-                print("\nOpción no válida. Por favor, selecciona una opción del 1 al 5.")
+                print("\nOpción no válida. Por favor, selecciona una opción del 1 al 6.")
             
             input("\nPresiona Enter para continuar...")
         
